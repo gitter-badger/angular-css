@@ -7,6 +7,7 @@
  */
 
 'use strict';
+/*global angular*/
 
 (function (angular) {
 
@@ -35,8 +36,8 @@
       weight: 0
     };
 
-    this.$get = ['$rootScope','$injector','$window','$timeout','$compile','$http','$filter','$log',
-                function $get($rootScope, $injector, $window, $timeout, $compile, $http, $filter, $log) {
+    this.$get = ['$rootScope','$injector','$window','$timeout','$compile','$http','$filter','$log','$q',
+                function $get($rootScope, $injector, $window, $timeout, $compile, $http, $filter, $log, $q) {
 
       var $css = {};
 
@@ -63,6 +64,26 @@
         }
       }
 
+      function _resolvePromises (current, prev, resolveProp) {
+        if (current) {
+          var currentRoute = $css.getFromRoute(current, 'resolve');
+          console.dir(current.$$route);
+          if (prev) {
+            current.$$route.resolve = current.$$route.resolve || {};
+            current.$$route.resolve[resolveProp] = function () {
+              var defer = $q.defer();
+              $css.preload(currentRoute, function () {
+                $css.add(currentRoute);
+              }, 'resolve', defer);
+              return defer.promise;
+            };
+
+          } else {
+            $css.add(currentRoute);
+          }
+        }
+      }
+
       /**
        * Listen for route change event and add/remove stylesheet(s)
        **/
@@ -72,23 +93,20 @@
           $css.remove($css.getFromRoute(prev));
         }
         // Adds current css rules
-        if (current) {
-          $css.add($css.getFromRoute(current));
-        }
+        _resolvePromises(current, prev, 'door3CssRoute');
       }
 
       /**
        * Listen for state change event and add/remove stylesheet(s)
        **/
       function $stateEventListener(event, current, params, prev) {
+        console.dir(arguments);
         // Removes previously added css rules
         if (prev) {
           $css.remove($css.getFromState(prev));
         }
         // Adds current css rules
-        if (current) {
-          $css.add($css.getFromState(current));
-        }
+        _resolvePromises(current, prev, 'door3CssState');
       }
 
       /**
@@ -234,7 +252,8 @@
       /**
        * Get From Route: returns array of css objects from single route
        **/
-      $css.getFromRoute = function (route) {
+      $css.getFromRoute = function (route, condition) {
+        var cssItem;
         if (!route) {
           return $log.error('Get From Route: No route provided');
         }
@@ -249,10 +268,18 @@
         if (css) {
           if (angular.isArray(css)) {
             angular.forEach(css, function (cssItem) {
-              result.push(parse(cssItem));
+              cssItem = parse(cssItem);
+              if (condition) {
+                cssItem.resolve = true;
+              }
+              result.push(cssItem);
             });
           } else {
-          result.push(parse(css));
+            cssItem = parse(css);
+            if (condition) {
+              cssItem.resolve = true;
+            }
+            result.push(cssItem);
           }
         }
         return result;
@@ -279,7 +306,8 @@
       /**
        * Get From State: returns array of css objects from single state
        **/
-      $css.getFromState = function (state) {
+      $css.getFromState = function (state, condition) {
+        var cssItem;
         if (!state) {
           return $log.error('Get From State: No state provided');
         }
@@ -288,7 +316,11 @@
         if (angular.isDefined(state.views)) {
           angular.forEach(state.views, function (item) {
             if (item.css) {
-              result.push(parse(item.css));
+              cssItem = parse(item.css);
+              if (condition) {
+                cssItem.resolve = true;
+              }
+              result.push(cssItem);
             }
           });
         }
@@ -296,7 +328,11 @@
         if (angular.isDefined(state.children)) {
           angular.forEach(state.children, function (child) {
             if (child.css) {
-              result.push(parse(child.css));
+              cssItem = parse(child.css);
+              if (condition) {
+                cssItem.resolve = true;
+              }
+              result.push(cssItem);
             }
             if (angular.isDefined(child.children)) {
               angular.forEach(child.children, function (childChild) {
@@ -312,6 +348,10 @@
           // For multiple stylesheets
           if (angular.isArray(state.css)) {
               angular.forEach(state.css, function (itemCss) {
+                cssItem = parse(itemCss);
+                if (condition) {
+                  cssItem.resolve = true;
+                }
                 result.push(parse(itemCss));
               });
             // For single stylesheets
@@ -347,8 +387,14 @@
       /**
        * Preload: preloads css via http request
        **/
-      $css.preload = function (stylesheets, callback) {
+      $css.preload = function (stylesheets, callback, condition, defer) {
         // If no stylesheets provided, then preload all
+        var promise;
+        if (condition === 'resolve') {
+          promise = true;
+        } else {
+          condition = 'preload';
+        }
         if (!stylesheets) {
           stylesheets = [];
           // Add all stylesheets from custom directives to array
@@ -364,7 +410,7 @@
             Array.prototype.push.apply(stylesheets, $css.getFromStates($injector.get('$state').get()));
           }
         }
-        stylesheets = filterBy(stylesheets, 'preload');
+        stylesheets = filterBy(stylesheets, condition);
         angular.forEach(stylesheets, function(stylesheet, index) {
           // Preload via ajax request
           $http.get(stylesheet.href)
@@ -376,8 +422,17 @@
             })
             .error(function (response) {
               $log.error('Incorrect path for ' + stylesheet.href);
+              if (promise) {
+                defer.reject();
+              }
             });
         });
+        if (promise) {
+          setTimeout(function () {
+            console.log(stylesheets);
+            defer.resolve();
+          }, 1000);
+        }
       };
 
       /**
