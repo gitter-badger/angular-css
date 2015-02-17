@@ -7,7 +7,6 @@
  */
 
 'use strict';
-/*global angular*/
 
 (function (angular) {
 
@@ -15,6 +14,7 @@
    * AngularCSS Module
    * Contains: config, constant, provider and run
    **/
+   /*global angular*/
   var angularCSS = angular.module('door3.css', []);
 
   // Config
@@ -65,22 +65,44 @@
       }
 
       function _resolvePromises (current, prev, resolveProp) {
-        if (current) {
-          var currentRoute = $css.getFromRoute(current, 'resolve');
-          console.dir(current.$$route);
-          if (prev) {
-            current.$$route.resolve = current.$$route.resolve || {};
-            current.$$route.resolve[resolveProp] = function () {
-              var defer = $q.defer();
-              $css.preload(currentRoute, function () {
-                $css.add(currentRoute);
-              }, 'resolve', defer);
-              return defer.promise;
-            };
-
-          } else {
-            $css.add(currentRoute);
+        var
+          ngResolve,
+          uiResolve,
+          currentRoute;
+        if (resolveProp === '_door3CssState') {
+          currentRoute = $css.getFromState(current, 'resolve');
+          uiResolve = $injector.get('$resolve');
+        } else {
+          currentRoute = $css.getFromRoute(current, 'resolve');
+          ngResolve = current;
+        }
+        if (prev) {
+          if (current) {
+            if (ngResolve) {
+              // resolve to ngRoute
+              if (!ngResolve.resolve) {ngResolve.resolve = {}}
+              ngResolve.resolve[resolveProp] = function () {
+                var defer = $q.defer();
+                $css.preload(currentRoute, function () {
+                  $css.add(currentRoute);
+                }, 'resolve', defer);
+                return defer.promise;
+              };
+            } else {
+              // resolve to ui.router
+              uiResolve.resolve({
+                _door3CssState: function () {
+                  var defer = $q.defer();
+                  $css.preload(currentRoute, function () {
+                    $css.add(currentRoute);
+                  }, 'resolve', defer);
+                  return defer.promise;
+                }
+              });
+            }
           }
+        } else {
+          $css.add(currentRoute);
         }
       }
 
@@ -92,21 +114,20 @@
         if (prev) {
           $css.remove($css.getFromRoute(prev));
         }
-        // Adds current css rules
-        _resolvePromises(current, prev, 'door3CssRoute');
+        // Adds current css rules and queued to resolve
+        _resolvePromises(current, prev, '_door3CssRoute');
       }
 
       /**
        * Listen for state change event and add/remove stylesheet(s)
        **/
       function $stateEventListener(event, current, params, prev) {
-        console.dir(arguments);
         // Removes previously added css rules
         if (prev) {
           $css.remove($css.getFromState(prev));
         }
-        // Adds current css rules
-        _resolvePromises(current, prev, 'door3CssState');
+        // Adds current css rules and queued to resolve
+        _resolvePromises(current, prev, '_door3CssState');
       }
 
       /**
@@ -429,8 +450,7 @@
         });
         if (promise) {
           setTimeout(function () {
-            console.log(stylesheets);
-            defer.resolve();
+            defer.resolve(true);
           }, 1000);
         }
       };
