@@ -1,5 +1,7 @@
 # AngularCSS
 
+[![Join the chat at https://gitter.im/enricolucia/angular-css](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/enricolucia/angular-css?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 ##### CSS on-demand for AngularJS
 Optimize the presentation layer of your single-page apps by dynamically injecting stylesheets as needed.
 
